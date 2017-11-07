@@ -6,11 +6,27 @@ import dlib
 import imutils
 from defs import *
 
+'''
+TO DO:
+- There are currrently 3 modules, take photo, gaze estimation, and then face detections
+- want to reorder so that gaze estimation works for any detected face
+- then we make it realtime
+- then we 'just' put it on the pico pro ha ha
+- woo
+'''
 
+
+################################################################
+# IMAGE CAPTURE ############################################################
+# This is somethign I found online to open the mac webcam and take, save a photo
+################################################################
 cap = cv2.VideoCapture(0)
 
+# Gets photo
 while(True):
     ret, frame = cap.read()
+
+    # May want to chane to grayscale eventually
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
 
     cv2.imshow('frame', rgb)
@@ -21,12 +37,13 @@ while(True):
 cap.release()
 cv2.destroyAllWindows()
 
-
+################################################################
+# Gaze Estimation ##########################################################
+################################################################
 
 # Read Image
 im = cv2.imread("capture.jpg");
-size = im.shape
-print size
+size = im.shape         # Functions later use this to calibrate camera
 
 #2D image points. If you change the image, you need to change vector
 image_points = np.array([
@@ -63,6 +80,12 @@ model_points = np.array([
 
 # Camera internals
 # NEED TO UPDATE FOR macpro
+'''
+Actual photo calibration is more involved.
+Some people in one of the labs I am working on camera calibration tools (in python)
+So, maybe we can take those eventually. The hardcoded values work okay, or maybe can find
+ parameters online
+'''
 focal_length = size[1]
 center = (size[1]/2, size[0]/2)
 camera_matrix = np.array(
@@ -71,19 +94,22 @@ camera_matrix = np.array(
                          [0, 0, 1]], dtype = "double"
                          )
 
-print "Camera Matrix :\n {0}".format(camera_matrix)
+# print "Camera Matrix :\n {0}".format(camera_matrix)
 
 dist_coeffs = np.zeros((4,1)) # Assuming no lens distortion
+
+# SolvePnP is a known algorithm for extraction depth in 2D images
+# https://en.wikipedia.org/wiki/Perspective-n-Point
 (success, rotation_vector, translation_vector) = cv2.solvePnP(model_points, image_points, camera_matrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
 
-print "Rotation Vector:\n {0}".format(rotation_vector)
-print "Translation Vector:\n {0}".format(translation_vector)
+# print "Rotation Vector:\n {0}".format(rotation_vector)
+# print "Translation Vector:\n {0}".format(translation_vector)
 
 
 # Project a 3D point (0, 0, 1000.0) onto the image plane.
 # We use this to draw a line sticking out of the nose
 
-
+# For frawing the blue line in the example
 (nose_end_point2D, jacobian) = cv2.projectPoints(np.array([(0.0, 0.0, 1000.0)]), rotation_vector, translation_vector, camera_matrix, dist_coeffs)
 
 for p in image_points:
@@ -99,17 +125,19 @@ cv2.line(im, p1, p2, (255,0,0), 2)
 # cv2.imshow("Output", im)
 # cv2.waitKey(0)
 
-# DLIB Example
+################################################################
+# DLIB Example ################################################################
+################################################################
 
 # initialize dlib's face detector (HOG-based) and then create
-# the facial landmark predictor
+# the facial landmark predictor, this is in the git repo, needed to download it
 shape_predict = "shape_predictor_68_face_landmarks.dat"
 detector = dlib.get_frontal_face_detector()
 predictor = dlib.shape_predictor(shape_predict)
 
-# /usr/local/Cellar/dlib/19.7
 
 # load the input image, resize it, and convert it to grayscale
+# Can change image below
 image = cv2.imread("capture.jpg");
 image = imutils.resize(image, width=500)
 gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
