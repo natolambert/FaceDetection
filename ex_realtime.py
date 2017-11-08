@@ -6,6 +6,10 @@ import dlib
 import imutils
 from defs import *
 import time
+import serial
+import sys
+from serial.tools.list_ports import comports as list_comports
+from playsound import playsound
 
 '''
 TO DO:
@@ -17,6 +21,18 @@ TO DO:
 '''
 
 
+
+port = None
+for s in list_comports():
+    print(s)
+    if 'usbmodem' in s[0]:
+        port = s[0]
+        break
+
+if port is None:
+    print("NO SERIAL PORT COULD BE FOUND")
+    sys.exit()
+print("Using port " + port)
 
 ################################################################
 # Gaze Estimation ##########################################################
@@ -74,33 +90,33 @@ def analyzeImage(im):
     parameters online
     '''
     #2D image points. If you change the image, you need to change vector
-    image_points = np.array([
-                                (658, 387),     # Nose tip
-                                (660, 593),     # Chin
-                                (537, 318),     # Left eye left corner
-                                (774, 313),     # Right eye right corne
-                                (591, 493),     # Left Mouth corner
-                                (716, 492)      # Right mouth corner
-                            ], dtype="double")
-
-    # 3D model points.
-    model_points = np.array([
-                                (0.0, 0.0, 0.0),             # Nose tip
-                                (0.0, -330.0, -65.0),        # Chin
-                                (-225.0, 170.0, -135.0),     # Left eye left corner
-                                (225.0, 170.0, -135.0),      # Right eye right corne
-                                (-150.0, -150.0, -125.0),    # Left Mouth corner
-                                (150.0, -150.0, -125.0)      # Right mouth corner
-
-                            ])
-
-    focal_length = size[1]
-    center = (size[1]/2, size[0]/2)
-    camera_matrix = np.array(
-                            [[focal_length, 0, center[0]],
-                            [0, focal_length, center[1]],
-                            [0, 0, 1]], dtype = "double"
-                            )
+    # image_points = np.array([
+    #                             (658, 387),     # Nose tip
+    #                             (660, 593),     # Chin
+    #                             (537, 318),     # Left eye left corner
+    #                             (774, 313),     # Right eye right corne
+    #                             (591, 493),     # Left Mouth corner
+    #                             (716, 492)      # Right mouth corner
+    #                         ], dtype="double")
+    #
+    # # 3D model points.
+    # model_points = np.array([
+    #                             (0.0, 0.0, 0.0),             # Nose tip
+    #                             (0.0, -330.0, -65.0),        # Chin
+    #                             (-225.0, 170.0, -135.0),     # Left eye left corner
+    #                             (225.0, 170.0, -135.0),      # Right eye right corne
+    #                             (-150.0, -150.0, -125.0),    # Left Mouth corner
+    #                             (150.0, -150.0, -125.0)      # Right mouth corner
+    #
+    #                         ])
+    #
+    # focal_length = size[1]
+    # center = (size[1]/2, size[0]/2)
+    # camera_matrix = np.array(
+    #                         [[focal_length, 0, center[0]],
+    #                         [0, focal_length, center[1]],
+    #                         [0, 0, 1]], dtype = "double"
+    #                         )
 
     # print "Camera Matrix :\n {0}".format(camera_matrix)
     '''
@@ -140,18 +156,13 @@ def analyzeImage(im):
     # DLIB Example ################################################################
     ################################################################
 
-    # initialize dlib's face detector (HOG-based) and then create
-    # the facial landmark predictor, this is in the git repo, needed to download it
-    shape_predict = "shape_predictor_68_face_landmarks.dat"
-    detector = dlib.get_frontal_face_detector()
-    predictor = dlib.shape_predictor(shape_predict)
+
 
 
     # load the input image, resize it, and convert it to grayscale
     # Can change image below
-    image = im
-    image = imutils.resize(image, width=500)
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    im = imutils.resize(im, width=500)
+    gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
 
     # detect faces in the grayscale image
     rects = detector(gray, 1)
@@ -166,21 +177,21 @@ def analyzeImage(im):
         # convert dlib's rectangle to a OpenCV-style bounding box
         # [i.e., (x, y, w, h)], then draw the face bounding box
         (x, y, w, h) = rect_to_bb(rect)
-        cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        cv2.rectangle(im, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
         # show the face number
-        cv2.putText(image, "Face #{}".format(i + 1), (x - 10, y - 10),
+        cv2.putText(im, "Face #{}".format(i + 1), (x - 10, y - 10),
             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         # loop over the (x, y)-coordinates for the facial landmarks
         # and draw them on the image
         for (x, y) in shape:
-            cv2.circle(image, (x, y), 1, (0, 0, 255), -1)
+            cv2.circle(im, (x, y), 1, (0, 0, 255), -1)
 
-        
+
     # show the output image with the face detections + facial landmarks
     #cv2.imshow("Output", image)
     #cv2.imwrite('facialFeatures.jpg', image)
-    return image
+    return im, rects
 
 
 
@@ -190,16 +201,46 @@ def analyzeImage(im):
 ################################################################
 cap = cv2.VideoCapture(0)
 
+# initialize dlib's face detector (HOG-based) and then create
+# the facial landmark predictor, this is in the git repo, needed to download it
+shape_predict = "shape_predictor_68_face_landmarks.dat"
+detector = dlib.get_frontal_face_detector()
+predictor = dlib.shape_predictor(shape_predict)
 # Gets photo
-while(True):
-    ret, frame = cap.read()
-    #analyzeImage(frame)
-    # May want to chane to grayscale eventually
-    rgb = cv2.cvtColor(analyzeImage(frame), cv2.COLOR_BGR2BGRA)
-    time.sleep(0.1)
-    cv2.imshow('frame', rgb)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+with serial.Serial(port, 9200) as ser:
+    try:
+        playflag = False
+        while(True):
+            ret, frame = cap.read()
+            #analyzeImage(frame)
+            # May want to chane to grayscale eventually
+            image, faces = analyzeImage(frame)
 
-cap.release()
-cv2.destroyAllWindows()
+            ## if no faces in frame
+            if len(faces) > 0:
+                print("face")
+                ser.write('set 125 65280\n')
+                playflag = True
+                # ser.write('set 125 4370175\n')
+            else:
+                print("no face")
+                ser.write('p 1671680 1 10\n')
+                playflag and playsound('beep-01a.mp3', block=False)
+                playflag = False
+
+                ## Change color
+            rgb = cv2.cvtColor(image, cv2.COLOR_BGR2BGRA)
+
+            ## No Face sh
+            # time.sleep(0.1)
+            cv2.imshow('frame', rgb)
+
+            # Communicates
+
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+    except Exception as e:
+        print(e)
+        ser.write("off\n")
+        cap.release()
+        cv2.destroyAllWindows()
