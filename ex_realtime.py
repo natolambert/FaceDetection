@@ -6,9 +6,11 @@ import dlib
 import imutils
 from defs import *
 import time
-import serial
-import sys
-from serial.tools.list_ports import comports as list_comports
+from scipy.spatial import distance as dist
+# Packages for serial
+# import serial
+# import sys
+# from serial.tools.list_ports import comports as list_comports
 from playsound import playsound
 
 '''
@@ -21,6 +23,8 @@ TO DO:
 '''
 
 
+'''
+# Serial setup
 
 port = None
 for s in list_comports():
@@ -33,13 +37,27 @@ if port is None:
     print("NO SERIAL PORT COULD BE FOUND")
     sys.exit()
 print("Using port " + port)
-
+'''
 ################################################################
 # Gaze Estimation ##########################################################
 ################################################################
 
 
+def eye_aspect_ratio(eye):
+	# compute the euclidean distances between the two sets of
+	# vertical eye landmarks (x, y)-coordinates
+	A = dist.euclidean(eye[1], eye[5])
+	B = dist.euclidean(eye[2], eye[4])
 
+	# compute the euclidean distance between the horizontal
+	# eye landmark (x, y)-coordinates
+	C = dist.euclidean(eye[0], eye[3])
+
+	# compute the eye aspect ratio
+	ear = (A + B) / (2.0 * C)
+
+	# return the eye aspect ratio
+	return ear
 
 def analyzeImage(im):
     # Read Image
@@ -47,40 +65,6 @@ def analyzeImage(im):
     size = im.shape         # Functions later use this to calibrate camera
 
     '''
-    #2D image points. If you change the image, you need to change vector
-    image_points = np.array([
-                                (658, 387),     # Nose tip
-                                (660, 593),     # Chin
-                                (537, 318),     # Left eye left corner
-                                (774, 313),     # Right eye right corne
-                                (591, 493),     # Left Mouth corner
-                                (716, 492)      # Right mouth corner
-                            ], dtype="double")
-
-
-    Default
-    image_points = np.array([
-                                (359, 391),     # Nose tip
-                                (399, 561),     # Chin
-                                (337, 297),     # Left eye left corner
-                                (513, 301),     # Right eye right corne
-                                (345, 465),     # Left Mouth corner
-                                (453, 469)      # Right mouth corner
-                            ], dtype="double")
-
-
-    # 3D model points.
-    model_points = np.array([
-                                (0.0, 0.0, 0.0),             # Nose tip
-                                (0.0, -330.0, -65.0),        # Chin
-                                (-225.0, 170.0, -135.0),     # Left eye left corner
-                                (225.0, 170.0, -135.0),      # Right eye right corne
-                                (-150.0, -150.0, -125.0),    # Left Mouth corner
-                                (150.0, -150.0, -125.0)      # Right mouth corner
-
-                            ])
-
-
     # Camera internals
     # NEED TO UPDATE FOR macpro
 
@@ -166,7 +150,7 @@ def analyzeImage(im):
 
     # detect faces in the grayscale image
     rects = detector(gray, 1)
-
+    shape = []
     # loop over the face detections
     for (i, rect) in enumerate(rects):
         # determine the facial landmarks for the face region, then
@@ -191,7 +175,7 @@ def analyzeImage(im):
     # show the output image with the face detections + facial landmarks
     #cv2.imshow("Output", image)
     #cv2.imwrite('facialFeatures.jpg', image)
-    return im, rects
+    return im, rects, shape
 
 
 
@@ -207,40 +191,49 @@ shape_predict = "shape_predictor_68_face_landmarks.dat"
 detector = dlib.get_frontal_face_detector()
 predictor = dlib.shape_predictor(shape_predict)
 # Gets photo
-with serial.Serial(port, 9200) as ser:
-    try:
-        playflag = False
-        while(True):
-            ret, frame = cap.read()
-            #analyzeImage(frame)
-            # May want to chane to grayscale eventually
-            image, faces = analyzeImage(frame)
 
-            ## if no faces in frame
-            if len(faces) > 0:
-                print("face")
-                ser.write('set 125 65280\n')
-                playflag = True
-                # ser.write('set 125 4370175\n')
-            else:
-                print("no face")
-                ser.write('p 1671680 1 10\n')
-                playflag and playsound('beep-01a.mp3', block=False)
-                playflag = False
+# Comment out serial such for computer only example
+# with serial.Serial(port, 9200) as ser:
+ear_thresh = .3
+try:
+    playflag = False
+    while(True):
+        ret, frame = cap.read()
+        #analyzeImage(frame)
+        # May want to chane to grayscale eventually
+        image, faces, shape = analyzeImage(frame)
+        eye1 = shape[36:42]
+        eye2 = shape[42:48]
+        ## if no faces in frame
+        if len(faces) > 0:
+            print("face")
+            # ser.write('set 125 65280\n')
+            playflag = True
+            # ser.write('set 125 4370175\n')
+            ear1 = eye_aspect_ratio(eye1)
+            ear2 = eye_aspect_ratio(eye2)
+            if (ear1 < ear_thresh) & (ear2 < ear_thresh):
+                print("wake Up!")
 
-                ## Change color
-            rgb = cv2.cvtColor(image, cv2.COLOR_BGR2BGRA)
+        else:
+            print("no face")
+            # ser.write('p 1671680 1 10\n')
+            playflag # and playsound('beep-01a.mp3', block=False)
+            playflag = False
 
-            ## No Face sh
-            # time.sleep(0.1)
-            cv2.imshow('frame', rgb)
+            ## Change color
+        rgb = cv2.cvtColor(image, cv2.COLOR_BGR2BGRA)
 
-            # Communicates
+        ## No Face sh
+        # time.sleep(0.1)
+        cv2.imshow('frame', rgb)
 
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-    except Exception as e:
-        print(e)
-        ser.write("off\n")
-        cap.release()
-        cv2.destroyAllWindows()
+        # Communicates
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+except Exception as e:
+    print(e)
+    # ser.write("off\n")
+    cap.release()
+    cv2.destroyAllWindows()
