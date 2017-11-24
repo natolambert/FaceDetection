@@ -1,5 +1,10 @@
 #!/usr/bin/env python
 
+'''
+TO RUN:
+python ex_realtime.py -c pi-drowsiness-detection/haarcascade_frontalface_default.xml  -p shape_predictor_68_face_landmarks.dat
+'''
+
 import cv2
 import numpy as np
 import dlib
@@ -24,15 +29,30 @@ from playsound import playsound
 # Arduiono LED Library
 from LEDDriver import *
 
+# construct the argument parse and parse the arguments
+ap = argparse.ArgumentParser()
+ap.add_argument("-c", "--cascade", required=True,
+	help = "path to where the face cascade resides")
+ap.add_argument("-p", "--shape-predictor", required=True,
+	help="path to facial landmark predictor")
+ap.add_argument("-a", "--alarm", type=int, default=0,
+	help="boolean used to indicate if TrafficHat should be used")
+args = vars(ap.parse_args())
 
+'''
+cascade_fn = args.get('--cascade', "../../data/haarcascades/haarcascade_frontalface_alt.xml")
+nested_fn  = args.get('--nested-cascade', "../../data/haarcascades/haarcascade_eye.xml")
+
+cam = create_capture(video_src, fallback='synth:bg=../data/lena.jpg:noise=0.05')
+'''
 # Global Setting for if use lights / sound
-serial = True
-sound = True
+serial = False
+sound = False
 
 # Finds SERIAL
-if serial: client = LEDDriver(find_serial_port())
-
-client.green()
+if serial:
+    client = LEDDriver(find_serial_port())
+    client.green()
 
 # Start time
 t0 = time.time()
@@ -53,123 +73,97 @@ def eye_aspect_ratio(eye):
 	# return the eye aspect ratio
 	return ear
 
-def analyzeImage(im):
-    # Read Image
-    #im = cv2.imread("capture.jpg");
-    size = im.shape         # Functions later use this to calibrate camera
-
-    ################################################################
-    # DLIB Example ################################################################
-    ################################################################
-
-    # load the input image, resize it, and convert it to grayscale
-    # Can change image below
-    im = imutils.resize(im, width=500)
-    gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
-
-    # detect faces in the grayscale image
-    rects = detector(gray, 1)
-    shape = []
-    # loop over the face detections
-    for (i, rect) in enumerate(rects):
-        # determine the facial landmarks for the face region, then
-        # convert the facial landmark (x, y)-coordinates to a NumPy
-        # array
-        shape = predictor(gray, rect)
-        shape = shape_to_np(shape)
-        # convert dlib's rectangle to a OpenCV-style bounding box
-        # [i.e., (x, y, w, h)], then draw the face bounding box
-        (x, y, w, h) = rect_to_bb(rect)
-        cv2.rectangle(im, (x, y), (x + w, y + h), (0, 255, 0), 2)
-
-        # show the face number
-        cv2.putText(im, "Face #{}".format(i + 1), (x - 10, y - 10),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-        # loop over the (x, y)-coordinates for the facial landmarks
-        # and draw them on the image
-        for (x, y) in shape:
-            cv2.circle(im, (x, y), 1, (0, 0, 255), -1)
-
-
-    # show the output image with the face detections + facial landmarks
-    #cv2.imshow("Output", image)
-    #cv2.imwrite('facialFeatures.jpg', image)
-    return im, rects, shape
-
 def euclidean_dist(ptA, ptB):
 	# compute and return the euclidean distance between the two
 	# points
 	return np.linalg.norm(ptA - ptB)
 
-import thread
 
-def input_thread(a_list):
-    raw_input()
-    a_list.append(True)
+vs = VideoStream(src=0).start()         # imutil package
 
-
-################################################################
-# IMAGE CAPTURE ############################################################
-# This is somethign I found online to open the mac webcam and take, save a photo
-################################################################
-cap = cv2.VideoCapture(0)
-# vs = VideoStream(cap).start()
-
-# initialize dlib's face detector (HOG-based) and then create
+# initialize CV2's face detector (Haar-based) and then create
 # the facial landmark predictor, this is in the git repo, needed to download it
 shape_predict = "shape_predictor_68_face_landmarks.dat"
-detector = dlib.get_frontal_face_detector()
-# detector = cv2.CascadeClassifier()
-predictor = dlib.shape_predictor(shape_predict)
-# Gets photo
+detector = cv2.CascadeClassifier(args["cascade"])                   # cv2 Detector is faster via Haar Cascades
+predictor = dlib.shape_predictor(args["shape_predictor"])           # DLIB Detector via linear SVM + HOG
 
-# Comment out serial such for computer only example
-# with serial.Serial(port, 9200) as ser:
-ear_thresh = .2
+# Two threshold variables for interactability
+EAR_THRESH = .2
+EAR_CONSEC = 3
 
+# grab the indexes of the facial landmarks for the left and
+# right eye, respectively
+(lStart, lEnd) = face_utils.FACIAL_LANDMARKS_IDXS["left_eye"]
+(rStart, rEnd) = face_utils.FACIAL_LANDMARKS_IDXS["right_eye"]
 
 print 'Init time is: ', time.time() - t0, ' (s)'
 
 playflag = False
 distract = False
+
+# Timing initiations
 t_play = time.time()
+t_temp = t_play
+
+# Loop
 while(True):
-    # print 'loop'
+    # Imutil Video Read frame capture and manipulation
+    frame = vs.read()
+    frame = imutils.resize(frame, width=450)
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    rects = detector.detectMultiScale(gray, scaleFactor=1.1,
+        minNeighbors=5, minSize=(30, 30), flags=cv2.CASCADE_SCALE_IMAGE)
+
+
+    # Prints frame rate
     tl = time.time()
+    t_diff = tl-t_temp
+    cv2.putText(frame, "FPS {}".format(int(1/(t_diff))), (20,20),
+        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+    t_temp = tl
 
     # Reset playflag after time period
-    # print tl
-    # print t_play
     if (tl-t_play) > 2:
         playflag = False
 
-    # frame = vs.read()
-    # gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    # rects = detector.detectMultiScale(gray, scaleFactor=1.1,
-	# 	minNeighbors=5, minSize=(30, 30),
-	# 	flags=cv2.CASCADE_SCALE_IMAGE)
-
-    ret, frame = cap.read()
-
-    #good running
+    # Turn LEDs off when suitable
     if serial and (not playflag):
         client.off()
 
-    #analyzeImage(frame)
-    # May want to chane to grayscale eventually
-    image, faces, shape = analyzeImage(frame)
+    # detect faces in the grayscale image
+    for (x, y, w, h) in rects:
+        i = 0
+        # determine the facial landmarks for the face region, then
+        # convert the facial landmark (x, y)-coordinates to a NumPy
+        # array
+
+        # construct a dlib rectangle object from the Haar cascade bounding box
+        rect = dlib.rectangle(int(x), int(y), int(x + w), int(y + h))
+        shape = predictor(gray, rect)
+        shape = face_utils.shape_to_np(shape)
+        # convert dlib's rectangle to a OpenCV-style bounding box
+        # [i.e., (x, y, w, h)], then draw the face bounding box
+        (x, y, w, h) = rect_to_bb(rect)
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+
+        # loop over the (x, y)-coordinates for the facial landmarks
+        # and draw them on the image
+        for (x, y) in shape:
+            cv2.circle(frame, (x, y), 1, (0, 0, 255), -1)
+
 
     ## if no faces in frame
-    if len(faces) > 0:
+    if len(rects) > 0:
 
         # For checking wakefullness
-        eye1 = shape[36:42]
-        eye2 = shape[42:48]
+        eye1 = shape[lStart:lEnd]
+        eye2 = shape[rStart:rEnd]
 
         # print("face")
         ear1 = eye_aspect_ratio(eye1)
         ear2 = eye_aspect_ratio(eye2)
-        if (ear1 < ear_thresh) and (ear2 < ear_thresh):
+        if (ear1 < EAR_THRESH) and (ear2 < EAR_THRESH):
             print("wake Up!")
             if serial:
                 if not playflag:
@@ -194,19 +188,19 @@ while(True):
         ## Change color
 
     #Image process for displaying
-    rgb = cv2.cvtColor(image, cv2.COLOR_BGR2BGRA)
+    # rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
 
     ## No Face sh
     # time.sleep(0.1)
-    cv2.imshow('frame', rgb)
+    cv2.imshow("Frame", frame)
 
     key = cv2.waitKey(1) & 0xFF
-	# if the `q` key was pressed, break from the loop
+    # if the `q` key was pressed, break from the loop
     if key == ord("q"):
 		break
 
-print ''
 print('Aborted, runtime:'), time.time()-t0, ' (s)'
 if serial: client.off()
-cap.release()
+# cap.release()
 cv2.destroyAllWindows()
+vs.stop()
