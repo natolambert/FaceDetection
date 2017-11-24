@@ -4,44 +4,38 @@ import cv2
 import numpy as np
 import dlib
 import imutils
+from imutils.video import VideoStream
+from imutils import face_utils
+import argparse
+
 from defs import *
 import time
 from scipy.spatial import distance as dist
+import Carbon
+
 # Packages for serial
-# import serial
-# import sys
-# from serial.tools.list_ports import comports as list_comports
+import serial
+import sys
+from serial.tools.list_ports import comports as list_comports
+
+# Sound library
 from playsound import playsound
 
-'''
-TO DO:
-- There are currrently 3 modules, take photo, gaze estimation, and then face detections
-- want to reorder so that gaze estimation works for any detected face
-- then we make it realtime
-- then we 'just' put it on the pico pro ha ha
-- woo
-'''
+# Arduiono LED Library
+from LEDDriver import *
 
 
-'''
-# Serial setup
+# Global Setting for if use lights / sound
+serial = True
+sound = True
 
-port = None
-for s in list_comports():
-    print(s)
-    if 'usbmodem' in s[0]:
-        port = s[0]
-        break
+# Finds SERIAL
+if serial: client = LEDDriver(find_serial_port())
 
-if port is None:
-    print("NO SERIAL PORT COULD BE FOUND")
-    sys.exit()
-print("Using port " + port)
-'''
-################################################################
-# Gaze Estimation ##########################################################
-################################################################
+client.green()
 
+# Start time
+t0 = time.time()
 
 def eye_aspect_ratio(eye):
 	# compute the euclidean distances between the two sets of
@@ -64,84 +58,9 @@ def analyzeImage(im):
     #im = cv2.imread("capture.jpg");
     size = im.shape         # Functions later use this to calibrate camera
 
-    '''
-    # Camera internals
-    # NEED TO UPDATE FOR macpro
-
-    Actual photo calibration is more involved.
-    Some people in one of the labs I am working on camera calibration tools (in python)
-    So, maybe we can take those eventually. The hardcoded values work okay, or maybe can find
-    parameters online
-    '''
-    #2D image points. If you change the image, you need to change vector
-    # image_points = np.array([
-    #                             (658, 387),     # Nose tip
-    #                             (660, 593),     # Chin
-    #                             (537, 318),     # Left eye left corner
-    #                             (774, 313),     # Right eye right corne
-    #                             (591, 493),     # Left Mouth corner
-    #                             (716, 492)      # Right mouth corner
-    #                         ], dtype="double")
-    #
-    # # 3D model points.
-    # model_points = np.array([
-    #                             (0.0, 0.0, 0.0),             # Nose tip
-    #                             (0.0, -330.0, -65.0),        # Chin
-    #                             (-225.0, 170.0, -135.0),     # Left eye left corner
-    #                             (225.0, 170.0, -135.0),      # Right eye right corne
-    #                             (-150.0, -150.0, -125.0),    # Left Mouth corner
-    #                             (150.0, -150.0, -125.0)      # Right mouth corner
-    #
-    #                         ])
-    #
-    # focal_length = size[1]
-    # center = (size[1]/2, size[0]/2)
-    # camera_matrix = np.array(
-    #                         [[focal_length, 0, center[0]],
-    #                         [0, focal_length, center[1]],
-    #                         [0, 0, 1]], dtype = "double"
-    #                         )
-
-    # print "Camera Matrix :\n {0}".format(camera_matrix)
-    '''
-    dist_coeffs = np.zeros((4,1)) # Assuming no lens distortion
-
-    # SolvePnP is a known algorithm for extraction depth in 2D images
-    # https://en.wikipedia.org/wiki/Perspective-n-Point
-    (success, rotation_vector, translation_vector) = cv2.solvePnP(model_points, image_points, camera_matrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
-
-    # print "Rotation Vector:\n {0}".format(rotation_vector)
-    # print "Translation Vector:\n {0}".format(translation_vector)
-
-
-    # Project a 3D point (0, 0, 1000.0) onto the image plane.
-    # We use this to draw a line sticking out of the nose
-
-    # For frawing the blue line in the example
-    (nose_end_point2D, jacobian) = cv2.projectPoints(np.array([(0.0, 0.0, 1000.0)]), rotation_vector, translation_vector, camera_matrix, dist_coeffs)
-
-    ## Points on nose
-    print(nose_end_point2D)
-    print(image_points)
-    for p in image_points:
-        cv2.circle(im, (int(p[0]), int(p[1])), 3, (0,0,255), -1)
-
-
-    p1 = ( int(image_points[0][0]), int(image_points[0][1]))
-    p2 = ( int(nose_end_point2D[0][0][0]), int(nose_end_point2D[0][0][1]))
-
-    cv2.line(im, p1, p2, (255,0,0), 2)
-    '''
-    # Display image
-    # cv2.imshow("Output", im)
-    # cv2.waitKey(0)
-
     ################################################################
     # DLIB Example ################################################################
     ################################################################
-
-
-
 
     # load the input image, resize it, and convert it to grayscale
     # Can change image below
@@ -177,6 +96,16 @@ def analyzeImage(im):
     #cv2.imwrite('facialFeatures.jpg', image)
     return im, rects, shape
 
+def euclidean_dist(ptA, ptB):
+	# compute and return the euclidean distance between the two
+	# points
+	return np.linalg.norm(ptA - ptB)
+
+import thread
+
+def input_thread(a_list):
+    raw_input()
+    a_list.append(True)
 
 
 ################################################################
@@ -184,56 +113,100 @@ def analyzeImage(im):
 # This is somethign I found online to open the mac webcam and take, save a photo
 ################################################################
 cap = cv2.VideoCapture(0)
+# vs = VideoStream(cap).start()
 
 # initialize dlib's face detector (HOG-based) and then create
 # the facial landmark predictor, this is in the git repo, needed to download it
 shape_predict = "shape_predictor_68_face_landmarks.dat"
 detector = dlib.get_frontal_face_detector()
+# detector = cv2.CascadeClassifier()
 predictor = dlib.shape_predictor(shape_predict)
 # Gets photo
 
 # Comment out serial such for computer only example
 # with serial.Serial(port, 9200) as ser:
-ear_thresh = .3
-try:
-    playflag = False
-    while(True):
-        ret, frame = cap.read()
-        #analyzeImage(frame)
-        # May want to chane to grayscale eventually
-        image, faces, shape = analyzeImage(frame)
+ear_thresh = .2
+
+
+print 'Init time is: ', time.time() - t0, ' (s)'
+
+playflag = False
+distract = False
+t_play = time.time()
+while(True):
+    # print 'loop'
+    tl = time.time()
+
+    # Reset playflag after time period
+    # print tl
+    # print t_play
+    if (tl-t_play) > 2:
+        playflag = False
+
+    # frame = vs.read()
+    # gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    # rects = detector.detectMultiScale(gray, scaleFactor=1.1,
+	# 	minNeighbors=5, minSize=(30, 30),
+	# 	flags=cv2.CASCADE_SCALE_IMAGE)
+
+    ret, frame = cap.read()
+
+    #good running
+    if serial and (not playflag):
+        client.off()
+
+    #analyzeImage(frame)
+    # May want to chane to grayscale eventually
+    image, faces, shape = analyzeImage(frame)
+
+    ## if no faces in frame
+    if len(faces) > 0:
+
+        # For checking wakefullness
         eye1 = shape[36:42]
         eye2 = shape[42:48]
-        ## if no faces in frame
-        if len(faces) > 0:
-            print("face")
-            # ser.write('set 125 65280\n')
-            playflag = True
-            # ser.write('set 125 4370175\n')
-            ear1 = eye_aspect_ratio(eye1)
-            ear2 = eye_aspect_ratio(eye2)
-            if (ear1 < ear_thresh) & (ear2 < ear_thresh):
-                print("wake Up!")
 
-        else:
-            print("no face")
-            # ser.write('p 1671680 1 10\n')
-            playflag # and playsound('beep-01a.mp3', block=False)
-            playflag = False
+        # print("face")
+        ear1 = eye_aspect_ratio(eye1)
+        ear2 = eye_aspect_ratio(eye2)
+        if (ear1 < ear_thresh) and (ear2 < ear_thresh):
+            print("wake Up!")
+            if serial:
+                if not playflag:
+                    print 'yes!'
+                    client.pulse(Color(0,255,0),15,15)
+                    playflag = True
+                    t_play = time.time()
+                else:
+                    t_play = t_play
+            if sound: playsound('beep-01a.mp3',block=False)
 
-            ## Change color
-        rgb = cv2.cvtColor(image, cv2.COLOR_BGR2BGRA)
+    else:
+        # print("no face")
+        if serial:
+            if not playflag:
+                client.red()
+                playflag = True
+                t_play = time.time()
+            else:
+                t_play = t_play
 
-        ## No Face sh
-        # time.sleep(0.1)
-        cv2.imshow('frame', rgb)
+        ## Change color
 
-        # Communicates
+    #Image process for displaying
+    rgb = cv2.cvtColor(image, cv2.COLOR_BGR2BGRA)
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-except Exception as e:
-    print(e)
-    # ser.write("off\n")
-    cap.release()
-    cv2.destroyAllWindows()
+    ## No Face sh
+    # time.sleep(0.1)
+    cv2.imshow('frame', rgb)
+
+    key = cv2.waitKey(1) & 0xFF
+	# if the `q` key was pressed, break from the loop
+    if key == ord("q"):
+		break
+
+print ''
+print('Aborted, runtime:'), time.time()-t0, ' (s)'
+if serial: client.off()
+cap.release()
+cv2.destroyAllWindows()
