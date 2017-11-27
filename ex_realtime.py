@@ -37,7 +37,12 @@ ap.add_argument("-p", "--shape-predictor", required=True,
 	help="path to facial landmark predictor")
 ap.add_argument("-a", "--alarm", type=int, default=0,
 	help="boolean used to indicate if TrafficHat should be used")
+ap.add_argument("-u", "--user", type=str, default='driver',
+	help="String used for pushing data to server")
 args = vars(ap.parse_args())
+
+# driver_id = sys.argv[5]
+print args['user']
 
 '''
 cascade_fn = args.get('--cascade', "../../data/haarcascades/haarcascade_frontalface_alt.xml")
@@ -46,8 +51,8 @@ nested_fn  = args.get('--nested-cascade', "../../data/haarcascades/haarcascade_e
 cam = create_capture(video_src, fallback='synth:bg=../data/lena.jpg:noise=0.05')
 '''
 # Global Setting for if use lights / sound
-serial = False
-sound = False
+serial = True
+sound = True
 
 # Finds SERIAL
 if serial:
@@ -70,7 +75,7 @@ def eye_aspect_ratio(eye):
 	# compute the eye aspect ratio
 	ear = (A + B) / (2.0 * C)
 
-	# return the eye aspect ratio
+	# return the eye aspeqct ratio
 	return ear
 
 def euclidean_dist(ptA, ptB):
@@ -105,6 +110,13 @@ distract = False
 t_play = time.time()
 t_temp = t_play
 
+# Reduces serial command and sound clutter with timers
+t_sound = 0
+t_serial = 0
+
+
+i=0
+
 # Loop
 while(True):
     # Imutil Video Read frame capture and manipulation
@@ -122,13 +134,17 @@ while(True):
         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
     t_temp = tl
 
-    # Reset playflag after time period
-    if (tl-t_play) > 2:
-        playflag = False
-
-    # Turn LEDs off when suitable
+	# Turn LEDs off when suitable
     if serial and (not playflag):
         client.off()
+
+    # Reset playflag after time period
+    if (tl-t_serial) > 2:
+		playflag = False
+		# i=0
+		# print 'reset'
+
+
 
     # detect faces in the grayscale image
     for (x, y, w, h) in rects:
@@ -143,7 +159,7 @@ while(True):
         shape = face_utils.shape_to_np(shape)
         # convert dlib's rectangle to a OpenCV-style bounding box
         # [i.e., (x, y, w, h)], then draw the face bounding box
-        (x, y, w, h) = rect_to_bb(rect)
+        # (x, y, w, h) = rect_to_bb(rect)
         cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
 
@@ -164,26 +180,42 @@ while(True):
         ear1 = eye_aspect_ratio(eye1)
         ear2 = eye_aspect_ratio(eye2)
         if (ear1 < EAR_THRESH) and (ear2 < EAR_THRESH):
-            print("wake Up!")
-            if serial:
-                if not playflag:
-                    print 'yes!'
-                    client.pulse(Color(0,255,0),15,15)
-                    playflag = True
-                    t_play = time.time()
-                else:
-                    t_play = t_play
-            if sound: playsound('beep-01a.mp3',block=False)
 
+			# Sets number of iterations till blink -> eyes closed
+			# too_long = 10
+			t_loop_1 = time.time()
+			if serial and (t_loop_1-t_serial) > .5:
+				if not playflag:
+					client.pulse(Color(0,255,0),3,10)
+					t_serial = t_loop_1
+				# if (i > too_long) and (i%3 == 0):
+				# 	print 'triggd'
+				# 	if not playflag:
+				# 		client.set(255,Color(0,255,0))
+				# 		playflag = True
+				# 		t_play = time.time()
+				#
+				# i += 1
+
+			# Checks sound condition
+			if sound and (t_loop_1-t_sound) > 1:
+				playsound('beep-02a.mp3',block=False)
+				t_sound = t_loop_1
     else:
-        # print("no face")
-        if serial:
-            if not playflag:
-                client.red()
-                playflag = True
-                t_play = time.time()
-            else:
-                t_play = t_play
+		# Looking away loop
+		t_loop_2 = time.time()
+		if serial and (t_loop_2-t_serial) > .5:
+			if not playflag:
+				client.red()
+				t_serial = t_loop_2
+				playflag = True
+                # t_play = time.time()
+		# Checks sound condition 2
+
+		if sound and (t_loop_2-t_sound) > 1:
+			playsound('beep-01a.mp3',block=False)
+			t_sound = t_loop_2
+		i=0
 
         ## Change color
 
@@ -199,8 +231,9 @@ while(True):
     if key == ord("q"):
 		break
 
+
 print('Aborted, runtime:'), time.time()-t0, ' (s)'
-if serial: client.off()
+if serial: client.close()
 # cap.release()
 cv2.destroyAllWindows()
 vs.stop()
