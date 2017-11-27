@@ -103,132 +103,123 @@ EAR_CONSEC = 3
 
 print 'Init time is: ', time.time() - t0, ' (s)'
 
-playflag = False
-distract = False
-
 # Timing initiations
-t_play = time.time()
-t_temp = t_play
+t_state = 0			# Timer that stores last time state changed
+t_temp = 0			# Temp timer for FPS
 
-# Reduces serial command and sound clutter with timers
-t_sound = 0
-t_serial = 0
-
-
-i=0
+# Work with state loops rather than timings
+state = ''			# 'clear', 'distract', 'tired'
+state_temp = ''
+change_time = .5	# Minimum time between changing states ~detection lag
 
 # Loop
 while(True):
-    # Imutil Video Read frame capture and manipulation
-    frame = vs.read()
-    frame = imutils.resize(frame, width=450)
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    rects = detector.detectMultiScale(gray, scaleFactor=1.1,
-        minNeighbors=5, minSize=(30, 30), flags=cv2.CASCADE_SCALE_IMAGE)
+	# FRAME PROCESSING -----------------------------------------------
+
+	# Imutil Video Read frame capture and manipulation
+	frame = vs.read()
+	frame = imutils.resize(frame, width=450)
+	gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+	rects = detector.detectMultiScale(gray, scaleFactor=1.1,
+		minNeighbors=5, minSize=(30, 30), flags=cv2.CASCADE_SCALE_IMAGE)
 
 
-    # Prints frame rate
-    tl = time.time()
-    t_diff = tl-t_temp
-    cv2.putText(frame, "FPS {}".format(int(1/(t_diff))), (20,20),
-        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-    t_temp = tl
+	# Prints frame rate
+	tl = time.time()
+	t_diff = tl-t_temp
+	cv2.putText(frame, "FPS {}".format(int(1/(t_diff))), (20,20),
+		cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+	t_temp = tl
 
-	# Turn LEDs off when suitable
-    if serial and (not playflag):
-        client.off()
+	# Face Detection -----------------------------------------------
 
-    # Reset playflag after time period
-    if (tl-t_serial) > 2:
-		playflag = False
-		# i=0
-		# print 'reset'
+	# detect faces in the grayscale image
+	for (x, y, w, h) in rects:
+		i = 0
+		# determine the facial landmarks for the face region, then
+		# convert the facial landmark (x, y)-coordinates to a NumPy
+		# array
 
-
-
-    # detect faces in the grayscale image
-    for (x, y, w, h) in rects:
-        i = 0
-        # determine the facial landmarks for the face region, then
-        # convert the facial landmark (x, y)-coordinates to a NumPy
-        # array
-
-        # construct a dlib rectangle object from the Haar cascade bounding box
-        rect = dlib.rectangle(int(x), int(y), int(x + w), int(y + h))
-        shape = predictor(gray, rect)
-        shape = face_utils.shape_to_np(shape)
-        # convert dlib's rectangle to a OpenCV-style bounding box
-        # [i.e., (x, y, w, h)], then draw the face bounding box
-        # (x, y, w, h) = rect_to_bb(rect)
-        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+		# construct a dlib rectangle object from the Haar cascade bounding box
+		rect = dlib.rectangle(int(x), int(y), int(x + w), int(y + h))
+		shape = predictor(gray, rect)
+		shape = face_utils.shape_to_np(shape)
+		# convert dlib's rectangle to a OpenCV-style bounding box
+		# [i.e., (x, y, w, h)], then draw the face bounding box
+		# (x, y, w, h) = rect_to_bb(rect)
+		cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
 
         # loop over the (x, y)-coordinates for the facial landmarks
         # and draw them on the image
-        for (x, y) in shape:
-            cv2.circle(frame, (x, y), 1, (0, 0, 255), -1)
+		for (x, y) in shape:
+			cv2.circle(frame, (x, y), 1, (0, 0, 255), -1)
 
+	# State processing + serial + Sound ----------------------------
 
-    ## if no faces in frame
-    if len(rects) > 0:
+	# If face is found
+	if len(rects) > 0:
+		# For checking wakefullness
+		eye1 = shape[lStart:lEnd]
+		eye2 = shape[rStart:rEnd]
+		# print("face")
+		ear1 = eye_aspect_ratio(eye1)
+		ear2 = eye_aspect_ratio(eye2)
+		if (ear1 < EAR_THRESH) and (ear2 < EAR_THRESH):
+			# Checks eyes for drowsiness
+			state_temp = 'tired'
+		else:
+			state_temp = 'clear'
 
-        # For checking wakefullness
-        eye1 = shape[lStart:lEnd]
-        eye2 = shape[rStart:rEnd]
-
-        # print("face")
-        ear1 = eye_aspect_ratio(eye1)
-        ear2 = eye_aspect_ratio(eye2)
-        if (ear1 < EAR_THRESH) and (ear2 < EAR_THRESH):
-
-			# Sets number of iterations till blink -> eyes closed
-			# too_long = 10
-			t_loop_1 = time.time()
-			if serial and (t_loop_1-t_serial) > .5:
-				if not playflag:
-					client.pulse(Color(0,255,0),3,10)
-					t_serial = t_loop_1
-				# if (i > too_long) and (i%3 == 0):
-				# 	print 'triggd'
-				# 	if not playflag:
-				# 		client.set(255,Color(0,255,0))
-				# 		playflag = True
-				# 		t_play = time.time()
-				#
-				# i += 1
-
-			# Checks sound condition
-			if sound and (t_loop_1-t_sound) > 1:
-				playsound('beep-02a.mp3',block=False)
-				t_sound = t_loop_1
-    else:
-		# Looking away loop
-		t_loop_2 = time.time()
-		if serial and (t_loop_2-t_serial) > .5:
-			if not playflag:
-				client.red()
-				t_serial = t_loop_2
-				playflag = True
-                # t_play = time.time()
-		# Checks sound condition 2
-
-		if sound and (t_loop_2-t_sound) > 1:
-			playsound('beep-01a.mp3',block=False)
-			t_sound = t_loop_2
-		i=0
+	# If no face, that means distracted
+	else:
+		state_temp = 'distract'
+		# # Looking away loop
+		# t_loop_2 = time.time()
+		# if serial and (t_loop_2-t_serial) > .5:
+		# 	if not playflag:
+		# 		client.red()
+		# 		t_serial = t_loop_2
+		# 		playflag = True
+        #         # t_play = time.time()
+		# # Checks sound condition 2
+        #
+		# if sound and (t_loop_2-t_sound) > 1:
+		# 	playsound('beep-01a.mp3',block=False)
+		# 	t_sound = t_loop_2
+		# i=0
 
         ## Change color
 
-    #Image process for displaying
-    # rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
+	if (tl - t_state) > change_time:
+		if state != state_temp:
+			state = state_temp
+			if state == 'clear':
+				if serial:
+					client.off()
+				else:
+					print 'clear'
+			elif state == 'distract':
+				if serial:
+					client.red()
+				else:
+					print 'distact'
+				if sound: playsound('beep-01a.mp3',block=False)
+			else:
+				if serial:
+					client.pulse(Color(0,255,0),3,10)
+				else:
+					print 'tired'
+				if sound: playsound('beep-02a.mp3',block=False)
 
-    ## No Face sh
+
+    # Display Frame and exit functionality -------------------------------
     # time.sleep(0.1)
-    cv2.imshow("Frame", frame)
+	cv2.imshow("Frame", frame)
 
-    key = cv2.waitKey(1) & 0xFF
-    # if the `q` key was pressed, break from the loop
-    if key == ord("q"):
+	key = cv2.waitKey(1) & 0xFF
+	# if the `q` key was pressed, break from the loop
+	if key == ord("q"):
 		break
 
 
