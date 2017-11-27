@@ -17,7 +17,7 @@ def message_worker(portname, q):
 		time.sleep(SETUP_TIME)
 		print "Setup complete"
 		while not done:
-			message = q.get() 
+			message = q.get()
 			if message is None:
 				done = True
 			else:

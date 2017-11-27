@@ -15,8 +15,8 @@ import argparse
 
 from defs import *
 import time
+import datetime
 from scipy.spatial import distance as dist
-import Carbon
 
 # Packages for serial
 import serial
@@ -28,6 +28,10 @@ from playsound import playsound
 
 # Arduiono LED Library
 from LEDDriver import *
+
+# Database library
+from client import AttenthiaClient
+cli = AttenthiaClient("https://idd-wb-attenthia.herokuapp.com")
 
 # construct the argument parse and parse the arguments
 ap = argparse.ArgumentParser()
@@ -51,7 +55,7 @@ nested_fn  = args.get('--nested-cascade', "../../data/haarcascades/haarcascade_e
 cam = create_capture(video_src, fallback='synth:bg=../data/lena.jpg:noise=0.05')
 '''
 # Global Setting for if use lights / sound
-serial = True
+serial = False
 sound = True
 
 # Finds SERIAL
@@ -110,7 +114,7 @@ t_temp = 0			# Temp timer for FPS
 # Work with state loops rather than timings
 state = ''			# 'clear', 'distract', 'tired'
 state_temp = ''
-change_time = .5	# Minimum time between changing states ~detection lag
+change_time = .25	# Minimum time between changing states ~detection lag
 
 # Loop
 while(True):
@@ -174,43 +178,53 @@ while(True):
 	# If no face, that means distracted
 	else:
 		state_temp = 'distract'
-		# # Looking away loop
-		# t_loop_2 = time.time()
-		# if serial and (t_loop_2-t_serial) > .5:
-		# 	if not playflag:
-		# 		client.red()
-		# 		t_serial = t_loop_2
-		# 		playflag = True
-        #         # t_play = time.time()
-		# # Checks sound condition 2
-        #
-		# if sound and (t_loop_2-t_sound) > 1:
-		# 	playsound('beep-01a.mp3',block=False)
-		# 	t_sound = t_loop_2
-		# i=0
 
-        ## Change color
-
+	# Update state based on predetermined freq
 	if (tl - t_state) > change_time:
+
+		# If the state changes then act on periperals
 		if state != state_temp:
-			state = state_temp
+			t_state = time.time()				# Record state change time
+
+			# Sets distraction data for push to Database
+			distraction_type = 0
 			if state == 'clear':
+				distraction_type = 0
+			elif state == 'distract':
+				distraction_type = 1
+			else:
+				distraction_type = 2
+
+			# Logs data to server args['user']
+			cli.log(1, distraction_type, datetime.datetime.now())
+
+			# Driver is focused
+			if state_temp == 'clear':
 				if serial:
 					client.off()
 				else:
 					print 'clear'
-			elif state == 'distract':
+
+			# Driver not looking at camera
+			elif state_temp == 'distract':
 				if serial:
 					client.red()
 				else:
 					print 'distact'
 				if sound: playsound('beep-01a.mp3',block=False)
+
+			state = state_temp					# Store new state
+
+		# only plays distact sound if the state repeated as eyes closed
+		elif state == 'tired':
+			if serial:
+				client.pulse(Color(0,255,0),3,10)
 			else:
-				if serial:
-					client.pulse(Color(0,255,0),3,10)
-				else:
-					print 'tired'
-				if sound: playsound('beep-02a.mp3',block=False)
+				print 'tired'
+			if sound: playsound('beep-02a.mp3',block=False)
+
+		# Sends current state and timestamp to database
+
 
 
     # Display Frame and exit functionality -------------------------------
