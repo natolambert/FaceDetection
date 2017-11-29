@@ -30,7 +30,7 @@ from playsound import playsound
 from LEDDriver import *
 
 # Database library
-from client import AttenthiaClient
+from client2 import AttenthiaClient
 cli = AttenthiaClient("https://idd-wb-attenthia.herokuapp.com")
 
 # construct the argument parse and parse the arguments
@@ -56,7 +56,8 @@ cam = create_capture(video_src, fallback='synth:bg=../data/lena.jpg:noise=0.05')
 '''
 # Global Setting for if use lights / sound
 serial = False
-sound = True
+sound = False
+web = False
 
 # Finds SERIAL
 if serial:
@@ -93,12 +94,13 @@ vs = VideoStream(src=0).start()         # imutil package
 # initialize CV2's face detector (Haar-based) and then create
 # the facial landmark predictor, this is in the git repo, needed to download it
 shape_predict = "shape_predictor_68_face_landmarks.dat"
-detector = cv2.CascadeClassifier(args["cascade"])                   # cv2 Detector is faster via Haar Cascades
+# detector = cv2.CascadeClassifier(args["cascade"])                   # cv2 Detector is faster via Haar Cascades
+detector = dlib.get_frontal_face_detector()						# Dlib detector is slower but more robust
 predictor = dlib.shape_predictor(args["shape_predictor"])           # DLIB Detector via linear SVM + HOG
 
 # Two threshold variables for interactability
-EAR_THRESH = .2
-EAR_CONSEC = 3
+EAR_THRESH = .25
+# EAR_CONSEC = 3
 
 # grab the indexes of the facial landmarks for the left and
 # right eye, respectively
@@ -124,8 +126,9 @@ while(True):
 	frame = vs.read()
 	frame = imutils.resize(frame, width=450)
 	gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-	rects = detector.detectMultiScale(gray, scaleFactor=1.1,
-		minNeighbors=5, minSize=(30, 30), flags=cv2.CASCADE_SCALE_IMAGE)
+	# rects = detector.detectMultiScale(gray, scaleFactor=1.1,
+	# 	minNeighbors=5, minSize=(30, 30), flags=cv2.CASCADE_SCALE_IMAGE)
+	rects = detector(gray, 1)							#Dlib detector
 
 
 	# Prints frame rate
@@ -138,8 +141,11 @@ while(True):
 	# Face Detection -----------------------------------------------
 
 	# detect faces in the grayscale image
-	for (x, y, w, h) in rects:
+	# for (x, y, w, h) in rects:
+	for (j,rect)in enumerate(rects):
 		i = 0
+		(x, y, w, h) = rect_to_bb(rect)
+
 		# determine the facial landmarks for the face region, then
 		# convert the facial landmark (x, y)-coordinates to a NumPy
 		# array
@@ -190,13 +196,14 @@ while(True):
 			distraction_type = 0
 			if state == 'clear':
 				distraction_type = 0
+				# Logs data to server args['user']
+				if web: cli.log(1, distraction_type, datetime.datetime.now())
 			elif state == 'distract':
 				distraction_type = 1
-			else:
-				distraction_type = 2
-
-			# Logs data to server args['user']
-			cli.log(1, distraction_type, datetime.datetime.now())
+				# Logs data to server args['user']
+				if web: cli.log(1, distraction_type, datetime.datetime.now())
+			# else:
+			# 	distraction_type = 2
 
 			# Driver is focused
 			if state_temp == 'clear':
@@ -222,6 +229,9 @@ while(True):
 			else:
 				print 'tired'
 			if sound: playsound('beep-02a.mp3',block=False)
+			# Logs data to server args['user']
+			distraction_type=2
+			if web: cli.log(1, distraction_type, datetime.datetime.now())
 
 		# Sends current state and timestamp to database
 
@@ -239,6 +249,7 @@ while(True):
 
 print('Aborted, runtime:'), time.time()-t0, ' (s)'
 if serial: client.close()
+cli.close()
 # cap.release()
 cv2.destroyAllWindows()
 vs.stop()
