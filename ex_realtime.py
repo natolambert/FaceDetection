@@ -5,18 +5,27 @@ TO RUN:
 python ex_realtime.py -c pi-drowsiness-detection/haarcascade_frontalface_default.xml  -p shape_predictor_68_face_landmarks.dat
 '''
 
-import cv2
-import numpy as np
-import dlib
-import imutils
-from imutils.video import VideoStream
-from imutils import face_utils
-import argparse
+# Import functions
 
-from defs import *
+# Basic
+import numpy as np
+import argparse
 import time
 import datetime
 from scipy.spatial import distance as dist
+
+# CV
+import cv2
+import dlib
+
+# Image Processing and Viewing
+import imutils
+from imutils.video import VideoStream
+from imutils import face_utils
+
+# Our functions
+from defs import *
+
 
 # Packages for serial
 import serial
@@ -46,7 +55,7 @@ ap.add_argument("-u", "--user", type=str, default='driver',
 args = vars(ap.parse_args())
 
 # driver_id = sys.argv[5]
-print args['user']
+print(args['user'])
 
 '''
 cascade_fn = args.get('--cascade', "../../data/haarcascades/haarcascade_frontalface_alt.xml")
@@ -107,7 +116,7 @@ EAR_THRESH = .25
 (lStart, lEnd) = face_utils.FACIAL_LANDMARKS_IDXS["left_eye"]
 (rStart, rEnd) = face_utils.FACIAL_LANDMARKS_IDXS["right_eye"]
 
-print 'Init time is: ', time.time() - t0, ' (s)'
+print('Init time is: ', time.time() - t0, ' (s)')
 
 # Timing initiations
 t_state = 0			# Timer that stores last time state changed
@@ -117,6 +126,16 @@ t_temp = 0			# Temp timer for FPS
 state = ''			# 'clear', 'distract', 'tired'
 state_temp = ''
 change_time = .25	# Minimum time between changing states ~detection lag
+
+# Gaze analysis properties
+size_frame = (253,450,3)
+focal_length = size_frame[1]
+center = (size_frame[1]/2, size_frame[0]/2)
+camera_matrix = np.array(
+						 [[focal_length, 0, center[0]],
+						 [0, focal_length, center[1]],
+						 [0, 0, 1]], dtype = "double"
+						 )
 
 # Loop
 while(True):
@@ -165,6 +184,52 @@ while(True):
 		for (x, y) in shape:
 			cv2.circle(frame, (x, y), 1, (0, 0, 255), -1)
 
+		# Gaze detector + display
+		'''
+		Default
+		image_points = np.array([
+		                                # Nose tip
+		                                # Chin
+		                                # Left eye left corner
+		                                # Right eye right corne
+		                                # Left Mouth corner
+		                                 # Right mouth corner
+		                        ], dtype="double")
+		'''
+
+		# Specific features to transform to 3d
+		image_points = np.array([
+								shape[33],
+								shape[8],
+								shape[36],
+								shape[45],
+								shape[48],
+								shape[54]
+								], dtype="double")
+		# 3D model points. Defined in example
+		model_points = np.array([
+									(0.0, 0.0, 0.0),             # Nose tip
+									(0.0, -330.0, -65.0),        # Chin
+									(-225.0, 170.0, -135.0),     # Left eye left corner
+									(225.0, 170.0, -135.0),      # Right eye right corne
+									(-150.0, -150.0, -125.0),    # Left Mouth corner
+									(150.0, -150.0, -125.0)      # Right mouth corner
+								])
+
+
+		dist_coeffs = np.zeros((4,1)) # Assuming no lens distortion
+		(success, rotation_vector, translation_vector) = cv2.solvePnP(model_points, image_points, camera_matrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
+		# For frawing the blue line in the example
+		(nose_end_point2D, jacobian) = cv2.projectPoints(np.array([(0.0, 100.0, 1000.0)]), rotation_vector, translation_vector, camera_matrix, dist_coeffs)
+
+		p1 = ( int(image_points[0][0]), int(image_points[0][1]))
+		p2 = ( int(nose_end_point2D[0][0][0]), int(nose_end_point2D[0][0][1]))
+
+		cv2.line(frame, p1, p2, (255,0,0), 2)
+
+
+
+
 	# State processing + serial + Sound ----------------------------
 
 	# If face is found
@@ -210,14 +275,14 @@ while(True):
 				if serial:
 					client.off()
 				else:
-					print 'clear'
+					print('clear')
 
 			# Driver not looking at camera
 			elif state_temp == 'distract':
 				if serial:
 					client.red()
 				else:
-					print 'distact'
+					print('distact')
 				if sound: playsound('beep-01a.mp3',block=False)
 
 			state = state_temp					# Store new state
@@ -227,7 +292,7 @@ while(True):
 			if serial:
 				client.pulse(Color(0,255,0),3,10)
 			else:
-				print 'tired'
+				print('tired')
 			if sound: playsound('beep-02a.mp3',block=False)
 			# Logs data to server args['user']
 			distraction_type=2
