@@ -12,10 +12,10 @@ defitions. The program then proceeeds into a frame by frame loop at max possible
 frame rate. In this loop, the program shrinks each frame, then looks for faces
 and calculates certain features to determine if the user is focused. When the
 user is distracted to any level, the program provides feedback. Once initiated,
-click on the feedback window and press q to quit.
+click on the feedpythoback window and press q to quit.
 
 TO RUN:
-python DEMO.py -u 'MyName'
+python DEMO.py -u MyName
 '''
 ###############################################################################
 ###############################################################################
@@ -47,7 +47,7 @@ from serial.tools.list_ports import comports as list_comports
 from playsound import playsound
 
 # Our Functions
-from client2 import AttenthiaClient			# Web Client commands
+from clientdefs import AttenthiaClient			# Web Client commands
 from imdefs import *						# Image Processing
 from LEDDriver import *						# Arduino Driver
 
@@ -282,7 +282,7 @@ while(True):
 
 print('Aborted, runtime:'), time.time()-t0, ' (s)'
 if SerialToggle: client.close()
-cli.close()
+if WebToggle: cli.close()
 # cap.release()
 cv2.destroyAllWindows()
 vs.stop()
