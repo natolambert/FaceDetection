@@ -54,8 +54,7 @@ ap.add_argument("-u", "--user", type=str, default='driver',
 	help="String used for pushing data to server")
 args = vars(ap.parse_args())
 
-# driver_id = sys.argv[5]
-print(args['user'])
+
 
 '''
 cascade_fn = args.get('--cascade', "../../data/haarcascades/haarcascade_frontalface_alt.xml")
@@ -67,6 +66,9 @@ cam = create_capture(video_src, fallback='synth:bg=../data/lena.jpg:noise=0.05')
 serial = False
 sound = False
 web = False
+
+# driver_id = sys.argv[5]
+if web: cli.create_user(args['user'])
 
 # Finds SERIAL
 if serial:
@@ -143,12 +145,11 @@ while(True):
 
 	# Imutil Video Read frame capture and manipulation
 	frame = vs.read()
-	frame = imutils.resize(frame, width=450)
+	# frame = imutils.resize(frame, width=450)
 	gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 	# rects = detector.detectMultiScale(gray, scaleFactor=1.1,
 	# 	minNeighbors=5, minSize=(30, 30), flags=cv2.CASCADE_SCALE_IMAGE)
 	rects = detector(gray, 1)							#Dlib detector
-
 
 	# Prints frame rate
 	tl = time.time()
@@ -220,8 +221,7 @@ while(True):
 		dist_coeffs = np.zeros((4,1)) # Assuming no lens distortion
 		(success, rotation_vector, translation_vector) = cv2.solvePnP(model_points, image_points, camera_matrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
 		# For frawing the blue line in the example
-		(nose_end_point2D, jacobian) = cv2.projectPoints(np.array([(0.0, 100.0, 1000.0)]), rotation_vector, translation_vector, camera_matrix, dist_coeffs)
-
+		(nose_end_point2D, jacobian) = cv2.projectPoints(np.array([(0.0, 100.0, 500.0)]), rotation_vector, translation_vector, camera_matrix, dist_coeffs)
 		p1 = ( int(image_points[0][0]), int(image_points[0][1]))
 		p2 = ( int(nose_end_point2D[0][0][0]), int(nose_end_point2D[0][0][1]))
 

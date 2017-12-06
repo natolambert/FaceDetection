@@ -20,29 +20,29 @@ TO DO:
 # IMAGE CAPTURE ############################################################
 # This is somethign I found online to open the mac webcam and take, save a photo
 ################################################################
-cap = cv2.VideoCapture(0)
+# cap = cv2.VideoCapture(0)
 
-# Gets photo
-while(True):
-    ret, frame = cap.read()
-
-    # May want to chane to grayscale eventually
-    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
-
-    cv2.imshow('frame', rgb)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        out = cv2.imwrite('capture.jpg', frame)
-        break
-
-cap.release()
-cv2.destroyAllWindows()
+# # Gets photo
+# while(True):
+#     ret, frame = cap.read()
+#
+#     # May want to chane to grayscale eventually
+#     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
+#
+#     cv2.imshow('frame', rgb)
+#     if cv2.waitKey(1) & 0xFF == ord('q'):
+#         out = cv2.imwrite('capture.jpg', frame)
+#         break
+#
+# cap.release()
+# cv2.destroyAllWindows()
 
 ################################################################
 # Gaze Estimation ##########################################################
 ################################################################
 
 # Read Image
-im = cv2.imread("capture.jpg");
+im = cv2.imread("matt.jpg");
 size = im.shape         # Functions later use this to calibrate camera
 
 #2D image points. If you change the image, you need to change vector
@@ -54,17 +54,17 @@ image_points = np.array([
                             (591, 493),     # Left Mouth corner
                             (716, 492)      # Right mouth corner
                         ], dtype="double")
-'''
-Default
-image_points = np.array([
-                            (359, 391),     # Nose tip
-                            (399, 561),     # Chin
-                            (337, 297),     # Left eye left corner
-                            (513, 301),     # Right eye right corne
-                            (345, 465),     # Left Mouth corner
-                            (453, 469)      # Right mouth corner
-                        ], dtype="double")
-'''
+
+# Default
+# image_points = np.array([
+#                             (359, 391),     # Nose tip
+#                             (399, 561),     # Chin
+#                             (337, 297),     # Left eye left corner
+#                             (513, 301),     # Right eye right corne
+#                             (345, 465),     # Left Mouth corner
+#                             (453, 469)      # Right mouth corner
+#                         ], dtype="double")
+
 
 # 3D model points.
 model_points = np.array([
@@ -74,7 +74,6 @@ model_points = np.array([
                             (225.0, 170.0, -135.0),      # Right eye right corne
                             (-150.0, -150.0, -125.0),    # Left Mouth corner
                             (150.0, -150.0, -125.0)      # Right mouth corner
-
                         ])
 
 
@@ -138,20 +137,23 @@ predictor = dlib.shape_predictor(shape_predict)
 
 # load the input image, resize it, and convert it to grayscale
 # Can change image below
-image = cv2.imread("capture.jpg");
+image = cv2.imread("matt.jpg");
 image = imutils.resize(image, width=500)
 gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
 # detect faces in the grayscale image
 rects = detector(gray, 1)
+print rects
 
 # loop over the face detections
 for (i, rect) in enumerate(rects):
 	# determine the facial landmarks for the face region, then
 	# convert the facial landmark (x, y)-coordinates to a NumPy
 	# array
+	print 'in'
 	shape = predictor(gray, rect)
 	shape = shape_to_np(shape)
+	print 'okay'
 
 	# convert dlib's rectangle to a OpenCV-style bounding box
 	# [i.e., (x, y, w, h)], then draw the face bounding box
@@ -170,4 +172,3 @@ for (i, rect) in enumerate(rects):
 # show the output image with the face detections + facial landmarks
 cv2.imshow("Output", image)
 cv2.waitKey(0)
-print shape
