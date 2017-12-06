@@ -72,7 +72,6 @@ WebToggle = False
 # Finds SerialToggle
 if SerialToggle:
     client = LEDDriver(find_SerialToggle_port())
-    client.green()
 
 # Hardcodes web client
 if WebToggle:
@@ -83,23 +82,60 @@ shape_predict_dir = "shape_predictor_68_face_landmarks.dat"
 detector = dlib.get_frontal_face_detector()						# Dlib detector is slower but more robust
 predictor = dlib.shape_predictor(shape_predict_dir)
 
-###############################################################################
-
-# Two threshold variables for interactability
-EAR_THRESH = .25
-BOUNDING_BOX_THRESH = 0.1
-YAWN_THRESH = .85
-
 # grab the indexes of the facial landmarks for the left and right eye, respectively
 (lStart, lEnd) = face_utils.FACIAL_LANDMARKS_IDXS["left_eye"]
 (rStart, rEnd) = face_utils.FACIAL_LANDMARKS_IDXS["right_eye"]
 
 ###############################################################################
-
 # Start time
 t0 = time.time()
 vs = VideoStream(src=0).start()         # imutil package
 print('Init time is: ', time.time() - t0, ' (s)')
+
+# Loop to try and calibrate EAR_THRESH
+t_cal = 3
+calibration_data = []
+if SerialToggle: client.blue()
+while (time.time()-t0) < t_cal:
+	# Read Frame
+	frame = vs.read()
+	frame = imutils.resize(frame, width=450)
+	gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+	rects = detector(gray, 1)							#Dlib detector
+	for (j,rect)in enumerate(rects):
+
+		(x, y, w, h) = rect_to_bb(rect)
+		# construct a dlib rectangle object from the Haar cascade bounding box
+		rect = dlib.rectangle(int(x), int(y), int(x + w), int(y + h))
+		shape = predictor(gray, rect)
+		shape = face_utils.shape_to_np(shape)
+
+		# For checking wakefullness
+		eye1 = shape[lStart:lEnd]
+		eye2 = shape[rStart:rEnd]
+
+		# print("face")
+		er1 = EyesRatio(eye1)
+		er2 = EyesRatio(eye2)
+
+		# Append data into calibration data
+		calibration_data.append(er1)
+		calibration_data.append(er2)
+
+# Two threshold variables for interactability
+if min(calibration_data) > .3:			# If the user responded to the blink prompt
+	EAR_THRESH = .2
+else:
+	EAR_THRESH = min(calibration_data)*1.3
+print EAR_THRESH
+BOUNDING_BOX_THRESH = 0.1
+YAWN_THRESH = .85
+
+
+
+###############################################################################
+
+
 
 # Timing initiations
 t_state = 0			# Timer that stores last time state changed
@@ -108,7 +144,7 @@ t_temp = 0			# Temp timer for FPS
 # Work with state loops rather than timings
 state = ''			# 'clear', 'distract', 'tired'
 state_temp = ''
-change_time = .25	# Minimum time between changing states ~detection lag
+change_time = .1	# Minimum time between changing states ~detection lag
 
 ## Image properties for PnP Projection #########################################
 size_frame = (253,450,3)
@@ -264,6 +300,7 @@ while(True):
 				print('tired')
 			if SoundToggle: playSoundToggle('beep-02a.mp3',block=False)
 			# Logs data to server args['user']
+			state = ''
 			distraction_type=2
 			if WebToggle: cli.log(1, distraction_type, datetime.datetime.now())
 
