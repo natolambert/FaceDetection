@@ -1,8 +1,3 @@
 *.pyc
 *.png
 *.jpg
-client.py
-ex_realtime_5_states.py
-ex_realtime.py
-ex_static.py
-fDHaarClassifier.py
